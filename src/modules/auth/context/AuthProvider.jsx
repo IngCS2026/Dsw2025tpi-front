@@ -6,6 +6,12 @@ const decodeToken = (token) => {
     const payloadBase64 = token.split('.')[1];
     const payload = JSON.parse(atob(payloadBase64));
 
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      console.warn('[Auth] Token expirado');
+
+      return null;
+    }
+
     // El rol puede venir en varias claims
     const roleClaim = payload.role || payload['role'] || payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
 
@@ -65,40 +71,16 @@ function AuthProvider({ children }) {
 
       console.debug('[Auth] init: decoded payload', decoded);
 
-      // Recuperar customerId desde localStorage o del token decodificado
-      const storedCustomerId = localStorage.getItem('customerId');
-
-      if (storedCustomerId) {
-        decoded.customerId = storedCustomerId;
-      } else if (decoded.customerId) {
-        try { localStorage.setItem('customerId', decoded.customerId); } catch (e) {
-          console.error('[Auth] Error guardando customerId en localStorage:', e);
-        }
+      if (decoded && decoded.role) {
+        return decoded;
       }
 
-      // Recuperar username desde localStorage o del token decodificado
-      const storedUsername = localStorage.getItem('username');
-
-      if (storedUsername) {
-        decoded.username = storedUsername;
-      } else if (decoded.username) {
-        try { localStorage.setItem('username', decoded.username); } catch (e) {
-          console.error('[Auth] Error guardando username en localStorage:', e);
-        }
+      // Si el token es inválido o no tiene rol, se descarta
+      try {
+        localStorage.removeItem('token');
+      } catch (e) {
+        console.error('[Auth] Error eliminando token inválido:', e);
       }
-
-      // Recuperar role desde localStorage o del token decodificado
-      const storedRole = localStorage.getItem('role');
-
-      if (storedRole) {
-        decoded.role = storedRole;
-      } else if (decoded.role) {
-        try { localStorage.setItem('role', decoded.role); } catch (e) {
-          console.error('[Auth] Error guardando role en localStorage:', e);
-        }
-      }
-
-      return decoded;
     }
 
     return null; // Si no hay token, el usuario es null
@@ -108,58 +90,63 @@ function AuthProvider({ children }) {
   const isAuthenticated = Boolean(user);
 
   const singout = () => {
-    // Limpiar localStorage: token, customerId, username, role y cart
-    try { localStorage.removeItem('token'); } catch (e) {
-      console.error('[Auth] Error removing token from localStorage:', e);
+    // Limpiar localStorage: token y cart
+    try {
+      localStorage.removeItem('token');
+    } catch (e) {
+      console.error('[Auth] Error eliminando el token del localStorage:', e);
     }
-    try { localStorage.removeItem('customerId'); } catch (e) {
-      console.error('[Auth] Error removing customerId from localStorage:', e);
+
+    try {
+      localStorage.removeItem('cart');
+    } catch (e) {
+      console.error('[Auth] Error eliminando el carrito del localStorage:', e);
     }
-    try { localStorage.removeItem('username'); } catch (e) {
-      console.error('[Auth] Error removing username from localStorage:', e);
+
+    try {
+      localStorage.removeItem('username');
+    } catch (e) {
+      console.error('[Auth] Error eliminando el username del localStorage:', e);
     }
-    try { localStorage.removeItem('role'); } catch (e) {
-      console.error('[Auth] Error removing role from localStorage:', e);
+
+    try {
+      localStorage.removeItem('customerId');
+    } catch (e) {
+      console.error('[Auth] Error eliminando el customerId del localStorage:', e);
     }
-    try { localStorage.removeItem('cart'); } catch (e) {
-      console.error('[Auth] Error removing cart from localStorage:', e);
+
+    try {
+      localStorage.removeItem('role');
+    } catch (e) {
+      console.error('[Auth] Error eliminando el rol del localStorage:', e);
     }
+
     // Notificar a otros componentes que el carrito cambió
-    try { window.dispatchEvent(new Event('cartUpdated')); } catch (e) {
+    try {
+      window.dispatchEvent(new Event('cartUpdated'));
+    } catch (e) {
       console.error('[Auth] Error dispatching cartUpdated event:', e);
     }
+
     setUser(null);
   };
 
   const singin = (loginData) => {
-    const { token, username, customerId, role } = loginData;
-
-    const newUser = {
-      token,
-      username,
-      customerId,
-      role,
-    };
+    const { token } = loginData;
+    const decodedUser = decodeToken(token);
 
     localStorage.setItem('token', token);
-
-    if (username) localStorage.setItem('username', username);
-
-    if (customerId) localStorage.setItem('customerId', customerId);
-
-    if (role) localStorage.setItem('role', role);
-
-    setUser(newUser);
+    setUser(decodedUser);
   };
 
   return (
     <AuthContext.Provider
-      value={ {
+      value={{
         isAuthenticated,
         user, // estas opciones de valores y funcionenen van a quedar disponibles para el resto de la app
         singin,
         singout,
-      } }
+      }}
     >
       {children}
     </AuthContext.Provider>
